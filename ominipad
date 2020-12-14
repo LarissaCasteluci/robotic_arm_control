@@ -1,0 +1,97 @@
+
+function setMotor1Velocity_cb(msg)
+    -- Motor 1 speed subscriber callback
+    simSetJointTargetVelocity(omniPads[1],msg.data)
+end
+function setMotor2Velocity_cb(msg)
+    -- Motor 2 speed subscriber callback
+    simSetJointTargetVelocity(omniPads[2],msg.data)
+end
+function setMotor3Velocity_cb(msg)
+    -- Motor 3 speed subscriber callback
+    simSetJointTargetVelocity(omniPads[3],msg.data)
+end
+function setMotor4Velocity_cb(msg)
+    -- Motor 4 speed subscriber callback
+    simSetJointTargetVelocity(omniPads[4],msg.data)
+end
+
+
+
+if (sim_call_type==sim_childscriptcall_initialization) then
+
+    -- Retrieve handles and prepare initial parameters:
+    platform=simGetObjectAssociatedWithScript(sim_handle_self)
+    suffixNb=simGetNameSuffix(simGetObjectName(platform))
+    omniPads={-1,-1,-1,-1}
+    for i=1,4,1 do
+        simSetNameSuffix(suffixNb+i-1)
+        omniPads[i]=simGetObjectHandle('OmniWheel_regularRotation')
+    end
+    simSetNameSuffix(suffixNb)
+
+    moduleName=0
+    moduleVersion=0
+    index=0
+    pluginNotFound=true
+    while moduleName do
+        moduleName,moduleVersion=simGetModuleName(index)
+        if (moduleName=='RosInterface') then
+            pluginNotFound=false
+        end
+        index=index+1
+    end
+
+    if (not pluginNotFound) then
+        local sysTime=simGetSystemTimeInMs(-1)
+        local Motor1TopicName='Motor1Speed'..sysTime -- we add a random component so that we can have several instances of this robot running
+        local Motor2TopicName='Motor2Speed'..sysTime -- we add a random component so that we can have several instances of this robot running
+        local Motor3TopicName='Motor3Speed'..sysTime -- we add a random component so that we can have several instances of this robot running
+        local Motor4TopicName='Motor4Speed'..sysTime -- we add a random component so that we can have several instances of this robot
+        local simulationTimeTopicName='simTime'..sysTime -- we add a random component so that we can have several instances of this robot running
+
+         -- Prepare the sensor publisher and the motor speed subscribers:
+          simTimePub=simExtRosInterface_advertise('/'..simulationTimeTopicName,'std_msgs/Float32')
+        Motor1Sub=simExtRosInterface_subscribe('/'..Motor1TopicName,'std_msgs/Float32','setMotor1Velocity_cb')
+        Motor2Sub=simExtRosInterface_subscribe('/'..Motor2TopicName,'std_msgs/Float32','setMotor2Velocity_cb')
+        Motor3Sub=simExtRosInterface_subscribe('/'..Motor3TopicName,'std_msgs/Float32','setMotor3Velocity_cb')
+        Motor4Sub=simExtRosInterface_subscribe('/'..Motor4TopicName,'std_msgs/Float32','setMotor4Velocity_cb')
+
+    result=simLaunchExecutable('Ominipad',Motor1TopicName.." "..Motor2TopicName.."  "..Motor3TopicName.." "..Motor4TopicName.." "..simulationTimeTopicName,0)
+    end
+
+--    if simGetScriptExecutionCount() == 0 then
+--      console = simAuxiliaryConsoleOpen("Aux Console", 500, 25)
+--    end
+
+end
+
+if (sim_call_type==sim_childscriptcall_actuation) then
+
+ if not pluginNotFound then
+        simExtRosInterface_publish(simTimePub,{data=simGetSimulationTime()})
+        -- Send the robot's transform:
+    --    simExtRosInterface_sendTransform(getTransformStamped(robotHandle,'Ominipad',-1,'world'))
+        -- To send several transforms at once, use simExtRosInterface_sendTransforms instead
+    end
+
+end
+
+
+if (sim_call_type==sim_childscriptcall_sensing) then
+
+	-- Put your main SENSING code here
+
+end
+
+
+if (sim_call_type==sim_childscriptcall_cleanup) then
+    if not pluginNotFound then
+        -- Following not really needed in a simulation script (i.e. automatically shut down at simulation end):
+        simExtRosInterface_shutdownSubscriber(Motor1Sub)
+        simExtRosInterface_shutdownSubscriber(Motor2Sub)
+        simExtRosInterface_shutdownSubscriber(Motor3Sub)
+        simExtRosInterface_shutdownSubscriber(Motor4Sub)
+    end
+
+end

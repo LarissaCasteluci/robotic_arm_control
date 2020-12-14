@@ -1,0 +1,143 @@
+-- DO NOT WRITE CODE OUTSIDE OF THE if-then-end SECTIONS BELOW!! (unless the code is a function definition)
+
+function ik_cb(msg)
+        if msg.data==1 then
+            if cnt==0 then
+            state=simGetConfigForTipPose(ik,jointHandles,0.65,100)
+            if state then
+                applyJoints(jointHandles,state)
+            end
+            end
+            cnt=cnt+1
+        end
+end
+
+applyJoints=function(jointHandles,joints)
+    for i=1,#jointHandles,1 do
+        simSetJointTargetPosition(jointHandles[i],joints[i])
+    end
+end
+
+
+function joints_cb(msg)
+    if msg.data[1]==0 then
+        simSetJointTargetPosition(jointHandles[1],msg.data[2])
+        simSetJointTargetPosition(jointHandles[2],msg.data[3])
+        simSetJointTargetPosition(jointHandles[3],msg.data[4])
+        simSetJointTargetPosition(jointHandles[4],msg.data[5])
+        simSetJointTargetPosition(jointHandles[5],msg.data[6])
+        simSetJointTargetPosition(jointHandles[6],msg.data[7])
+        simSetJointTargetPosition(jointHandles[7],msg.data[8])
+    end
+end
+
+if (sim_call_type==sim_childscriptcall_initialization) then
+
+    cnt=0
+    target=simGetObjectHandle('Sawyer_target')
+    ik=simGetIkGroupHandle('ik_Sawyer')
+    --set variables
+    jointHandles={-1,-1,-1,-1,-1,-1,-1}
+    for i=1,7,1 do
+        jointHandles[i]=simGetObjectHandle('Sawyer_joint'..i)
+        simSetJointMode(jointHandles[i],5,0)
+        --simSetJointTargetVelocity(jointHandles[i],10)
+    end
+    headCameraHandle=simGetObjectHandle('Sawyer_head_camera')
+    --headCameraJointHandle=simGetObjectHandle('Sawyer_headJoint')
+    wristCameraHandle=simGetObjectHandle('Sawyer_wristCamera')
+
+
+    --Testando o Ros Interface
+    moduleName=0
+    moduleVersion=0
+    index=0
+    pluginNotFound=true
+    while moduleName do
+        moduleName,moduleVersion=simGetModuleName(index)
+        if (moduleName=='RosInterface') then
+            pluginNotFound=false
+        end
+        index=index+1
+    end
+
+     --Declarando Publishers, Subscribers, Relacionando ao Topico e chamando o executavel
+    if (not pluginNotFound) then
+        local sysTime=simGetSystemTimeInMs(-1)
+        --we add a random component so that we can have several instances of this robot running
+        local headCameraTopicName='headCameraImage'..sysTime
+        local wristCameraTopicName='wristCameraImage'..sysTime
+        local simulationTimeTopicName='simTime'..sysTime
+        local ikTopicName='TopicName'..sysTime
+        local jointsTopicName='jointsPosition'..sysTime
+
+         -- Prepare the sensor publisher and the motor speed subscribers:
+        headCameraSub=simExtRosInterface_advertise('/'..headCameraTopicName,'sensor_msgs/Image')
+        simExtRosInterface_publisherTreatUInt8ArrayAsString(headCameraSub)
+        wristCameraSub=simExtRosInterface_advertise('/'..wristCameraTopicName,'sensor_msgs/Image')
+        simExtRosInterface_publisherTreatUInt8ArrayAsString(wristCameraSub)
+        simTimePub=simExtRosInterface_advertise('/'..simulationTimeTopicName,'std_msgs/Float32')
+
+        ikSub=simExtRosInterface_subscribe('/'..ikTopicName,'std_msgs/Float32','ik_cb')
+        jointsSub=simExtRosInterface_subscribe('/'..jointsTopicName,'std_msgs/Float32MultiArray','joints_cb')
+
+    --chama o executavel, juntas 1 a 7, cabeca, pulso, sysTime
+        result=simLaunchExecutable('sawyer_robot',headCameraTopicName.." "..wristCameraTopicName.." "..simulationTimeTopicName.." "..ikTopicName.." "..jointsTopicName,0)
+
+   --if simGetScriptExecutionCount() == 0 then
+   -- console = simAuxiliaryConsoleOpen("Aux Console", 500, 25)
+   --end
+
+   --simAuxiliaryConsolePrint(console,simGetJointTargetPosition(jointHandles[2]))
+end
+
+end
+if (sim_call_type==sim_childscriptcall_actuation) then
+    if not pluginNotFound then
+
+        simExtRosInterface_publish(simTimePub,{data=simGetSimulationTime()})
+
+            local data,w,h=simGetVisionSensorCharImage(headCameraHandle)
+            d={}
+            d['header']={seq=0,stamp=0, frame_id="a"}
+            d['height']=h
+            d['width']=w
+            d['encoding']='rgb8'
+            d['is_bigendian']=1
+            d['step']=w*3*1 --comprimento de uma coluna ate outra em bytes, ou seja
+ -- n colunas*n canais* tamanho em bytes da informaçao
+            d['data']=data
+        simExtRosInterface_publish(headCameraSub,d)
+
+
+            local data,w,h=simGetVisionSensorCharImage(wristCameraHandle)
+            f={}
+            f['header']={seq=0,stamp=0, frame_id="a"}
+            f['height']=h
+            f['width']=w
+            f['encoding']='rgb8'
+            f['is_bigendian']=1
+            f['step']=w*3*1
+            f['data']=data
+        simExtRosInterface_publish(wristCameraSub,f)
+
+    end
+
+end
+
+
+if (sim_call_type==sim_childscriptcall_sensing) then
+
+
+end
+
+
+if (sim_call_type==sim_childscriptcall_cleanup) then
+
+	if not pluginNotFound then
+        -- Following not really needed in a simulation script (i.e. automatically shut down at simulation end):
+        simExtRosInterface_shutdownSubscriber(jointsSub)
+        simExtRosInterface_shutdownSubscriber(ikSub)
+    end
+
+end
